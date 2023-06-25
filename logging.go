@@ -42,16 +42,16 @@ type loggingHandler struct {
 func (h loggingHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	t := time.Now()
 	logger, w := makeLogger(w)
-	url := *req.URL
+	originalURL := *req.URL
 
 	h.handler.ServeHTTP(w, req)
 	if req.MultipartForm != nil {
-		req.MultipartForm.RemoveAll()
+		_ = req.MultipartForm.RemoveAll()
 	}
 
 	params := LogFormatterParams{
 		Request:    req,
-		URL:        url,
+		URL:        originalURL,
 		TimeStamp:  t,
 		StatusCode: logger.Status(),
 		Size:       logger.Size(),
@@ -76,7 +76,8 @@ const lowerhex = "0123456789abcdef"
 
 func appendQuoted(buf []byte, s string) []byte {
 	var runeTmp [utf8.UTFMax]byte
-	for width := 0; len(s) > 0; s = s[width:] {
+	var width int
+	for ; len(s) > 0; s = s[width:] {
 		r := rune(s[0])
 		width = 1
 		if r >= utf8.RuneSelf {
@@ -88,7 +89,7 @@ func appendQuoted(buf []byte, s string) []byte {
 			buf = append(buf, lowerhex[s[0]&0xF])
 			continue
 		}
-		if r == rune('"') || r == '\\' { // always backslashed
+		if r == '"' || r == '\\' { // always backslashed
 			buf = append(buf, '\\')
 			buf = append(buf, byte(r))
 			continue
@@ -191,7 +192,7 @@ func buildCommonLogLine(req *http.Request, url url.URL, ts time.Time, status int
 func writeLog(writer io.Writer, params LogFormatterParams) {
 	buf := buildCommonLogLine(params.Request, params.URL, params.TimeStamp, params.StatusCode, params.Size)
 	buf = append(buf, '\n')
-	writer.Write(buf)
+	_, _ = writer.Write(buf)
 }
 
 // writeCombinedLog writes a log entry for req to w in Apache Combined Log Format.
@@ -204,7 +205,7 @@ func writeCombinedLog(writer io.Writer, params LogFormatterParams) {
 	buf = append(buf, `" "`...)
 	buf = appendQuoted(buf, params.Request.UserAgent())
 	buf = append(buf, '"', '\n')
-	writer.Write(buf)
+	_, _ = writer.Write(buf)
 }
 
 // CombinedLoggingHandler return a http.Handler that wraps h and logs requests to out in
@@ -226,13 +227,12 @@ func CombinedLoggingHandler(out io.Writer, h http.Handler) http.Handler {
 //
 // Example:
 //
-//  r := mux.NewRouter()
-//  r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-//  	w.Write([]byte("This is a catch-all route"))
-//  })
-//  loggedRouter := handlers.LoggingHandler(os.Stdout, r)
-//  http.ListenAndServe(":1123", loggedRouter)
-//
+//	r := mux.NewRouter()
+//	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+//		w.Write([]byte("This is a catch-all route"))
+//	})
+//	loggedRouter := handlers.LoggingHandler(os.Stdout, r)
+//	http.ListenAndServe(":1123", loggedRouter)
 func LoggingHandler(out io.Writer, h http.Handler) http.Handler {
 	return loggingHandler{out, h, writeLog}
 }

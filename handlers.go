@@ -6,42 +6,12 @@ package handlers
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
-	"sort"
 	"strings"
 )
-
-// MethodHandler is an http.Handler that dispatches to a handler whose key in the
-// MethodHandler's map matches the name of the HTTP request's method, eg: GET
-//
-// If the request's method is OPTIONS and OPTIONS is not a key in the map then
-// the handler responds with a status of 200 and sets the Allow header to a
-// comma-separated list of available methods.
-//
-// If the request's method doesn't match any of its keys the handler responds
-// with a status of HTTP 405 "Method Not Allowed" and sets the Allow header to a
-// comma-separated list of available methods.
-type MethodHandler map[string]http.Handler
-
-func (h MethodHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	if handler, ok := h[req.Method]; ok {
-		handler.ServeHTTP(w, req)
-	} else {
-		allow := []string{}
-		for k := range h {
-			allow = append(allow, k)
-		}
-		sort.Strings(allow)
-		w.Header().Set("Allow", strings.Join(allow, ", "))
-		if req.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-		} else {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	}
-}
 
 // responseLogger is wrapper of http.ResponseWriter that keeps track of its HTTP
 // status code and body size
@@ -71,7 +41,11 @@ func (l *responseLogger) Size() int {
 }
 
 func (l *responseLogger) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	conn, rw, err := l.w.(http.Hijacker).Hijack()
+	hjw, ok := l.w.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("can't hijack connection - writer does not support http.Hijacker")
+	}
+	conn, rw, err := hjw.Hijack()
 	if err == nil && l.status == 0 {
 		// The status will be StatusSwitchingProtocols if there was no error and
 		// WriteHeader has not been called yet

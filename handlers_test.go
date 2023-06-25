@@ -29,47 +29,6 @@ func newRequest(method, url string) *http.Request {
 	return req
 }
 
-func TestMethodHandler(t *testing.T) {
-	tests := []struct {
-		req     *http.Request
-		handler http.Handler
-		code    int
-		allow   string // Contents of the Allow header
-		body    string
-	}{
-		// No handlers
-		{newRequest("GET", "/foo"), MethodHandler{}, http.StatusMethodNotAllowed, "", notAllowed},
-		{newRequest("OPTIONS", "/foo"), MethodHandler{}, http.StatusOK, "", ""},
-
-		// A single handler
-		{newRequest("GET", "/foo"), MethodHandler{"GET": okHandler}, http.StatusOK, "", ok},
-		{newRequest("POST", "/foo"), MethodHandler{"GET": okHandler}, http.StatusMethodNotAllowed, "GET", notAllowed},
-
-		// Multiple handlers
-		{newRequest("GET", "/foo"), MethodHandler{"GET": okHandler, "POST": okHandler}, http.StatusOK, "", ok},
-		{newRequest("POST", "/foo"), MethodHandler{"GET": okHandler, "POST": okHandler}, http.StatusOK, "", ok},
-		{newRequest("DELETE", "/foo"), MethodHandler{"GET": okHandler, "POST": okHandler}, http.StatusMethodNotAllowed, "GET, POST", notAllowed},
-		{newRequest("OPTIONS", "/foo"), MethodHandler{"GET": okHandler, "POST": okHandler}, http.StatusOK, "GET, POST", ""},
-
-		// Override OPTIONS
-		{newRequest("OPTIONS", "/foo"), MethodHandler{"OPTIONS": okHandler}, http.StatusOK, "", ok},
-	}
-
-	for i, test := range tests {
-		rec := httptest.NewRecorder()
-		test.handler.ServeHTTP(rec, test.req)
-		if rec.Code != test.code {
-			t.Fatalf("%d: wrong code, got %d want %d", i, rec.Code, test.code)
-		}
-		if allow := rec.HeaderMap.Get("Allow"); allow != test.allow {
-			t.Fatalf("%d: wrong Allow, got %s want %s", i, allow, test.allow)
-		}
-		if body := rec.Body.String(); body != test.body {
-			t.Fatalf("%d: wrong body, got %q want %q", i, body, test.body)
-		}
-	}
-}
-
 func TestContentTypeHandler(t *testing.T) {
 	tests := []struct {
 		Method            string
